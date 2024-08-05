@@ -11,4 +11,6 @@ It's a great motor for robot arms as it has a low KV value of 53 and is rather c
 
 <img src="padman_topdown.png" alt="esp32_canbus_simplefoc pcb image" width="800"/>
 
+## Schematic
+
 <img src="schematic.png" alt="schematic" width="800"/>
