@@ -13,13 +13,14 @@ float clamp(float n, float lower, float upper) {
 PadmanESP32::PadmanESP32():sensor(AS5048_SPI, 10),
                           state(STATES::UNINITIALIZED),
                           motor(7, 15.3, 53),
-                          driver(7, 8, 9, 6)
+                          driver(7, 8, 9, 6),
+                          message_position()
                           {
 
 
   map_mac_to_id = {
-    { std::array<uint8_t, 6>({0x34, 0xb7, 0xda, 0x5a, 0x48, 0xbc}), 0 },
-    { std::array<uint8_t, 6>({0x34, 0xb7, 0xda, 0x5a, 0x48, 0xd0}), 1 },
+    { std::array<uint8_t, 6>({0x34, 0xb7, 0xda, 0x5a, 0x48, 0xd0}), 0 },
+    { std::array<uint8_t, 6>({0x34, 0xb7, 0xda, 0x5a, 0x48, 0xbc}), 1 },
     { std::array<uint8_t, 6>({0x34, 0xb7, 0xda, 0x5a, 0x48, 0xc0}), 2 },
     { std::array<uint8_t, 6>({0x34, 0xb7, 0xda, 0x5a, 0x48, 0xb8}), 3 },
   }; // std::map<std::array<uint8_t, 6>, uint8_t> 
@@ -47,11 +48,17 @@ PadmanESP32::PadmanESP32():sensor(AS5048_SPI, 10),
 
   std::map<uint8_t, float> map_gear_ratio = {
     { 0, 4.0},
-    { 1, 2.0},
+    { 1, 4.0},
     { 2, 2.0},
     { 3, 1.0},
   }; 
   gear_ratio = map_gear_ratio[id];
+
+  // prepare position msg
+  message_position.identifier = MSG_IDS_REL::STATE_POSITION + ((id+1) *100);
+  message_position.data_length_code = sizeof(position);
+  message_position.rtr = false;
+  memcpy(message_position.data, &position, sizeof(position));
 
 }
 
@@ -169,15 +176,18 @@ void PadmanESP32::init_canbus(){
 void PadmanESP32::canbus_polling(){
     while (1) {
       canbus_callback();  // Check for received messages in a loop
-      delay(30);   // Small delay to avoid hogging the CPU
+      //send_canbus_position();
+      delay(0.0001);   // Small delay to avoid hogging the CPU
     }
 
 }
 
 // Callback function for message reception
 void PadmanESP32::canbus_callback() {
+  
   twai_message_t message;
   if (twai_receive(&message, pdMS_TO_TICKS(10)) == ESP_OK) {
+    n_msg_received++;
     // Print the received message ID and data
     // Serial.print("Received message with ID: ");
     // Serial.println(message.identifier);
@@ -210,40 +220,42 @@ void PadmanESP32::canbus_callback() {
           // printf("Received a new joint target %f", joint_target);
       } 
     }
+    else if ((message.identifier/100) == id){ // is it for the previous joint? (we check because we only send our position if the previous joint sent its position)
+      switch(message.identifier%100){
+        case MSG_IDS_REL::STATE_POSITION:
+          n_msg_req_position++;
+          send_canbus_position();
+          break;
+      }
+    }
 
   } else {
     //Serial.println("Failed to receive message");
   }
 }
 
-void PadmanESP32::send_canbus_jointstate() {
-
-  twai_message_t message_position;
-  message_position.identifier = 4 + ((id+1) *100);
-  message_position.data_length_code = sizeof(position);
-  message_position.rtr = false;
-  memcpy(message_position.data, &position, sizeof(position));
-
+void PadmanESP32::send_canbus_position() {
+memcpy(message_position.data, &position, sizeof(position));
   // Queue message for transmission
-  if (twai_transmit(&message_position, pdMS_TO_TICKS(1000)) == ESP_OK) {
-    printf("Message queued for transmission from id %d\n",id);
+  if (twai_transmit(&message_position, pdMS_TO_TICKS(10)) == ESP_OK) {
+    //printf("Message queued for transmission from id %d\n",id);
   } else {
-    printf("Failed to queue message for transmission from id %d\n",id);
+    //printf("Failed to queue message for transmission from id %d\n",id);
   }
 
 
-  twai_message_t message_state;
-  message_state.identifier = MSG_IDS_REL::STATE + ((id+1) *100);
-  message_state.data_length_code = sizeof(state);
-  message_state.rtr = false;
-  memcpy(message_state.data, &state, sizeof(state));
+  // twai_message_t message_state;
+  // message_state.identifier = MSG_IDS_REL::STATE + ((id+1) *100);
+  // message_state.data_length_code = sizeof(state);
+  // message_state.rtr = false;
+  // memcpy(message_state.data, &state, sizeof(state));
 
-  // Queue message for transmission
-  if (twai_transmit(&message_state, pdMS_TO_TICKS(1000)) == ESP_OK) {
-    printf("Message queued for transmission\n");
-  } else {
-    printf("Failed to queue message for transmission\n");
-  }
+  // // Queue message for transmission
+  // if (twai_transmit(&message_state, pdMS_TO_TICKS(1000)) == ESP_OK) {
+  //   printf("Message queued for transmission\n");
+  // } else {
+  //   printf("Failed to queue message for transmission\n");
+  // }
 
   // twai_message_t message_gear_ratio;
   // message_gear_ratio.identifier = 12 + (id *100);
@@ -258,6 +270,62 @@ void PadmanESP32::send_canbus_jointstate() {
   //   printf("Failed to queue message for transmission\n");
   // }
 
+}
+
+void PadmanESP32::print_can_statistic(){
+  printf("Messages received since last print: %d %d\n",n_msg_received, n_msg_req_position);
+  n_msg_received=0;
+  n_msg_req_position=0;
+}
+
+#define ERROR_PASSIVE_THRESHOLD 127
+
+void PadmanESP32::check_twai_status_and_recover() {
+    twai_status_info_t status_info;
+
+    // Get the current TWAI status
+    twai_get_status_info(&status_info);
+
+    printf("TWAI Status:\n");
+    printf("State: %s\n", 
+        status_info.state == TWAI_STATE_RUNNING ? "Running" :
+        status_info.state == TWAI_STATE_STOPPED ? "Stopped" :
+        status_info.state == TWAI_STATE_BUS_OFF ? "Bus-Off" : "Unknown");
+    printf("Tx Error Counter: %d\n", status_info.tx_error_counter);
+    printf("Rx Error Counter: %d\n", status_info.rx_error_counter);
+    printf("Messages Pending Tx: %d\n", status_info.msgs_to_tx);
+    printf("Messages Pending Rx: %d\n", status_info.msgs_to_rx);
+
+    // Check for Bus-Off state and initiate recovery
+    if (status_info.state == TWAI_STATE_BUS_OFF) {
+        printf("Node is in Bus-Off state. Initiating recovery...\n");
+        
+        // Stop TWAI driver to allow recovery
+        twai_stop();
+        
+        // Initiate recovery
+        esp_err_t recovery_err = twai_initiate_recovery();
+        if (recovery_err == ESP_OK) {
+            printf("Recovery initiated successfully. Waiting for completion...\n");
+            
+            // Wait for a while to ensure recovery is complete
+            vTaskDelay(1000 / portTICK_PERIOD_MS);
+            
+            // Restart TWAI driver
+            twai_start();
+            printf("TWAI driver restarted after recovery.\n");
+        } else {
+            printf("Failed to initiate recovery. Error: %s\n", esp_err_to_name(recovery_err));
+        }
+    }
+    // Check for Error-Passive state by inspecting error counters
+    else if (status_info.tx_error_counter > ERROR_PASSIVE_THRESHOLD || status_info.rx_error_counter > ERROR_PASSIVE_THRESHOLD) {
+        printf("Node is in Error-Passive state (Tx Error: %d, Rx Error: %d). Consider taking action to recover.\n",
+               status_info.tx_error_counter, status_info.rx_error_counter);
+        // Optional: Add recovery logic if desired (e.g., stop/start driver)
+    } else {
+        printf("TWAI bus is in a healthy state.\n");
+    }
 }
 
 void PadmanESP32::switch_ctrl_position(){
