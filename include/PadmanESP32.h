@@ -3,7 +3,7 @@
 #include "PadmanESP32.h"
 #include <SimpleFOC.h>
 #include <map>
-
+#include "driver/twai.h"
 
 enum MSG_IDS_REL{
     CMD = 0,
@@ -56,6 +56,9 @@ class PadmanESP32{
     float kp = 1.0;
     STATES state;
 
+    int n_msg_received=0;
+    int n_msg_req_position=0;
+
     MagneticSensorSPI sensor; // padman v01
     //BLDCMotor motor = BLDCMotor(7, 14.4, 128); //GB2208
     BLDCMotor motor;// = BLDCMotor(7, 15.3, 53); //GB4106
@@ -66,12 +69,14 @@ class PadmanESP32{
         BLDCDriver3PWM driver;// = BLDCDriver3PWM(7, 8, 9, 6); // padman
     // BLDCDriver3PWM driver = BLDCDriver3PWM(pwmA, pwmB, pwmC, Enable(optional));
 
+      twai_message_t message_position;
+
     public:
         PadmanESP32();
         void init();
         void init_simplefoc();
         void init_canbus();
-        void send_canbus_jointstate();
+        void send_canbus_position();
         void readMacAddress(uint8_t baseMac[6]);
 
         void update_sensor();
@@ -82,6 +87,8 @@ class PadmanESP32{
         void canbus_polling();
         void loop();
         void switch_ctrl_position();
+        void print_can_statistic();
+        void check_twai_status_and_recover();
 
 };
 
