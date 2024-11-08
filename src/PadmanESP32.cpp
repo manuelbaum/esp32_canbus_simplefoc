@@ -19,8 +19,8 @@ PadmanESP32::PadmanESP32():sensor(AS5048_SPI, 10),
 
 
   map_mac_to_id = {
-    { std::array<uint8_t, 6>({0x34, 0xb7, 0xda, 0x5a, 0x48, 0xbc}), 0 },
-    { std::array<uint8_t, 6>({0x34, 0xb7, 0xda, 0x5a, 0x48, 0xd0}), 1 },
+    { std::array<uint8_t, 6>({0x34, 0xb7, 0xda, 0x5a, 0x48, 0xd0}), 0 },
+    { std::array<uint8_t, 6>({0x34, 0xb7, 0xda, 0x5a, 0x48, 0xbc}), 1 },
     { std::array<uint8_t, 6>({0x34, 0xb7, 0xda, 0x5a, 0x48, 0xc0}), 2 },
     { std::array<uint8_t, 6>({0x34, 0xb7, 0xda, 0x5a, 0x48, 0xb8}), 3 },
   }; // std::map<std::array<uint8_t, 6>, uint8_t> 
@@ -48,7 +48,7 @@ PadmanESP32::PadmanESP32():sensor(AS5048_SPI, 10),
 
   std::map<uint8_t, float> map_gear_ratio = {
     { 0, 4.0},
-    { 1, 2.0},
+    { 1, 4.0},
     { 2, 2.0},
     { 3, 1.0},
   }; 
