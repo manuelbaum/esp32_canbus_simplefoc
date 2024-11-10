@@ -26,7 +26,7 @@ PadmanESP32::PadmanESP32():sensor(AS5048_SPI, 10),
   }; // std::map<std::array<uint8_t, 6>, uint8_t> 
    // padman v01
   
-  delay(100);
+  delay(1000);
   init_canbus();
 
   // delay(100);
@@ -117,11 +117,25 @@ void PadmanESP32::init_simplefoc(){
     state = STATES::INITIALIZED_FOC;
 
 }
+void recover_from_bus_off() {
+    twai_status_info_t status_info;
+    twai_get_status_info(&status_info);
+
+    // Check if we are in bus-off state
+    if (status_info.state == TWAI_STATE_BUS_OFF) {
+        twai_stop();                  // Stop TWAI driver
+        twai_start();                 // Restart TWAI driver
+        printf("TWAI bus-off detected, attempting recovery...\n");
+    }
+}
 
 void PadmanESP32::init_canbus(){
   printf("Initializing TWAI\n");
+
+  recover_from_bus_off();
   // Initialize configuration structures using macro initializers
   twai_general_config_t g_config = TWAI_GENERAL_CONFIG_DEFAULT((gpio_num_t)pin_canbus_tx, (gpio_num_t)pin_canbus_rx, TWAI_MODE_NORMAL);
+  //g_config.bus_off_recovery = true;
   twai_timing_config_t t_config = TWAI_TIMING_CONFIG_500KBITS();  //Look in the api-reference for other speed sets.
   twai_filter_config_t f_config = TWAI_FILTER_CONFIG_ACCEPT_ALL();
 
@@ -174,10 +188,18 @@ void PadmanESP32::init_canbus(){
 }
 
 void PadmanESP32::canbus_polling(){
+    unsigned long t_prev = millis();
+    int CANBUS_STATE_RATE_MS = 1000;
     while (1) {
       canbus_callback();  // Check for received messages in a loop
       //send_canbus_position();
       delay(0.0001);   // Small delay to avoid hogging the CPU
+
+      unsigned long t_now = millis();
+      if (t_now - t_prev >= CANBUS_STATE_RATE_MS) {
+          send_canbus_state();
+          t_prev = t_now;
+      }
     }
 
 }
@@ -200,17 +222,24 @@ void PadmanESP32::canbus_callback() {
     // Serial.println();
 
     if((message.identifier/100)-1 == id){ // is this for this joint?
-      // Serial.println("FOR MEEEE for me!!");
+      Serial.println("FOR MEEEE for me!!");
       switch(message.identifier%100){
         case MSG_IDS_REL::CMD: // is it a command?
-          // printf("COMMAND: %u",(uint8_t)*message.data);
+          printf("COMMAND: %u",(uint8_t)*message.data);
           switch((uint8_t)*message.data){
             case CMD_IDS::INIT_FOC: // Received Command to init FOC
+              printf("Initializing FOC.");
               init_simplefoc();
               break;
             case FIND_JOINTLIMITS: // Received Command to explore joint limits
+              printf("Find Joint Limits.");
               state=FIND_LIMIT_LOWER;
               break;
+            case REBOOT:
+              printf("Received REBOOT command. Rebooting!\n");
+              twai_stop();
+              twai_driver_uninstall();
+              ESP.restart();
           }
         
         case MSG_IDS_REL::TARGET_POSITION:
@@ -218,6 +247,7 @@ void PadmanESP32::canbus_callback() {
           //joint_target = (float_t)*message.data;
           memcpy(&joint_target, message.data, sizeof(joint_target));
           // printf("Received a new joint target %f", joint_target);
+
       } 
     }
     else if ((message.identifier/100) == id){ // is it for the previous joint? (we check because we only send our position if the previous joint sent its position)
@@ -231,6 +261,21 @@ void PadmanESP32::canbus_callback() {
 
   } else {
     //Serial.println("Failed to receive message");
+  }
+}
+
+void PadmanESP32::send_canbus_state(){
+  twai_message_t message_state;
+  message_state.identifier = MSG_IDS_REL::STATE + ((id+1) *100);
+  message_state.data_length_code = sizeof(state);
+  message_state.rtr = false;
+  memcpy(message_state.data, &state, sizeof(state));
+
+  // Queue message for transmission
+  if (twai_transmit(&message_state, pdMS_TO_TICKS(1000)) == ESP_OK) {
+    //printf("Message queued for transmission -- State\n");
+  } else {
+    printf("Failed to queue message for transmission -- State\n");
   }
 }
 

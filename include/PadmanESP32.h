@@ -19,7 +19,8 @@ enum CMD_IDS{
     INIT_FOC=2,
     FIND_JOINTLIMITS=3,
     CMD_CTRL_TORQUE=4,
-    CMD_CTRL_POSITION=5
+    CMD_CTRL_POSITION=5,
+    REBOOT=6
 };
 
 enum STATES{
@@ -77,6 +78,7 @@ class PadmanESP32{
         void init_simplefoc();
         void init_canbus();
         void send_canbus_position();
+        void send_canbus_state();
         void readMacAddress(uint8_t baseMac[6]);
 
         void update_sensor();

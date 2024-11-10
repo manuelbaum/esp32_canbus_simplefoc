@@ -12,7 +12,9 @@ unsigned long previousMillis = 0;  // will store last time a message was send
 
 void setup() {
     // Start Serial:
+  delay(0.1);
   Serial.begin(9600);
+  delay(0.1);
   printf("Setup\n");
   padman = new PadmanESP32();
 }
