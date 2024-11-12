@@ -54,6 +54,14 @@ PadmanESP32::PadmanESP32():sensor(AS5048_SPI, 10),
   }; 
   gear_ratio = map_gear_ratio[id];
 
+  std::map<uint8_t, float> map_joint_offset = {
+    { 0, -3.141/6.0},
+    { 1, 0.0},
+    { 2, 3.141/3.0},
+    { 3, 0.0},
+  }; 
+  joint_offset = map_joint_offset[id];
+
   // prepare position msg
   message_position.identifier = MSG_IDS_REL::STATE_POSITION + ((id+1) *100);
   message_position.data_length_code = sizeof(position);
@@ -95,8 +103,8 @@ void PadmanESP32::init_simplefoc(){
     //
     //// control loop type and torque mode 
     motor.torque_controller = TorqueControlType::voltage;
-    //motor.controller = MotionControlType::torque;
-    motor.controller = MotionControlType::velocity;
+    motor.controller = MotionControlType::torque;
+    
     motor.motion_downsample = 10.0;
 
     //// velocity loop PID
@@ -233,6 +241,7 @@ void PadmanESP32::canbus_callback() {
               break;
             case FIND_JOINTLIMITS: // Received Command to explore joint limits
               printf("Find Joint Limits.");
+              motor.controller = MotionControlType::velocity;
               state=FIND_LIMIT_LOWER;
               break;
             case REBOOT:
@@ -240,6 +249,11 @@ void PadmanESP32::canbus_callback() {
               twai_stop();
               twai_driver_uninstall();
               ESP.restart();
+            case CMD_CTRL_POSITION:
+              printf("Received CMD_CTRL_POSITION!\n");
+              motor.controller = MotionControlType::torque;
+              joint_target = 0;
+              state=CTRL_POSITION;
           }
         
         case MSG_IDS_REL::TARGET_POSITION:
@@ -398,9 +412,10 @@ void PadmanESP32::loop(){
         motor.target = -d_vel_findjointlimit*gear_ratio;
         if(motor.voltage.q<-6){ // we found the limit
           lim_upper = motor.shaftAngle();
-          switch_ctrl_position();
-          
-          Serial.println(F("Switching to centering"));
+          //switch_ctrl_position();
+          motor.controller = MotionControlType::torque;
+          motor.target = 0.0;
+          state = INITIALIZED_JOINT;
 
           // StartTime = millis();
 
@@ -409,12 +424,13 @@ void PadmanESP32::loop(){
   case CTRL_POSITION :
         motor.controller = MotionControlType::torque;
         float motor_position = (motor.shaftAngle() - lim_lower) - (lim_upper - lim_lower)/2. ;
-        float joint_position = motor_position / gear_ratio;
+        float joint_position = motor_position / gear_ratio - joint_offset;
 
         
         
         tau = kp*(joint_target - joint_position);
-        motor.target = clamp(tau,-0.5, 0.5);
+        motor.target = tau;
+        //motor.target = clamp(tau,-0.5, 0.5);
         break;
 
     // case oscillate_up :

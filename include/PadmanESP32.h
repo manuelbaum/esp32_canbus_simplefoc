@@ -52,6 +52,7 @@ class PadmanESP32{
     float lim_lower;
     float lim_upper;
     float gear_ratio;
+    float joint_offset;
     float joint_target = 0;
     float tau = 0;
     float kp = 1.0;
