@@ -49,7 +49,7 @@ PadmanESP32::PadmanESP32():sensor(AS5048_SPI, 10),
   std::map<uint8_t, float> map_gear_ratio = {
     { 0, 4.0},
     { 1, 4.0},
-    { 2, 4.0},
+    { 2, 1.0},
     { 3, 4.0},
   }; 
   gear_ratio = map_gear_ratio[id];
@@ -57,7 +57,7 @@ PadmanESP32::PadmanESP32():sensor(AS5048_SPI, 10),
   std::map<uint8_t, float> map_joint_offset = {
     { 0, -3.141/6.0},
     { 1, 0.0},
-    { 2, 3.141/6.0},
+    { 2, 0.0},
     { 3, 0.0},
   }; 
   joint_offset = map_joint_offset[id];
@@ -294,6 +294,7 @@ void PadmanESP32::send_canbus_state(){
 }
 
 void PadmanESP32::send_canbus_position() {
+float position=joint_position();
 memcpy(message_position.data, &position, sizeof(position));
   // Queue message for transmission
   if (twai_transmit(&message_position, pdMS_TO_TICKS(10)) == ESP_OK) {
@@ -423,12 +424,7 @@ void PadmanESP32::loop(){
         break;
   case CTRL_POSITION :
         motor.controller = MotionControlType::torque;
-        float motor_position = (motor.shaftAngle() - lim_lower) - (lim_upper - lim_lower)/2. ;
-        float joint_position = motor_position / gear_ratio - joint_offset;
-
-        
-        
-        tau = kp*(joint_target - joint_position);
+        tau = kp*(joint_target - joint_position());
         motor.target = tau;
         //motor.target = clamp(tau,-0.5, 0.5);
         break;
@@ -451,6 +447,12 @@ void PadmanESP32::loop(){
     //     break;
   }
 
+}
+
+float PadmanESP32::joint_position(){
+  float motor_position = (motor.shaftAngle() - lim_lower) - (lim_upper - lim_lower)/2. ; // compute off-zero position in motor space (temporarily assuming zero is in the middle of joint limits in motor space)
+  float joint_position = motor_position / gear_ratio - joint_offset; // transfer to joint space, first using gear ratio, then offsetting joint_offset which is specified in joint-space
+  return joint_position;
 }
 
 void PadmanESP32::update_sensor(){

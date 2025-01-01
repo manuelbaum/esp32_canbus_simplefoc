@@ -81,6 +81,7 @@ class PadmanESP32{
         void send_canbus_position();
         void send_canbus_state();
         void readMacAddress(uint8_t baseMac[6]);
+        float joint_position();
 
         void update_sensor();
         float get_position();
