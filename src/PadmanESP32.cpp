@@ -55,12 +55,20 @@ PadmanESP32::PadmanESP32():sensor(AS5048_SPI, 10),
   gear_ratio = map_gear_ratio[id];
 
   std::map<uint8_t, float> map_joint_offset = {
-    { 0, -3.141/6.0},
+    { 0, -3.141/6.0 + 3.141},
     { 1, 0.0},
     { 2, 0.0},
     { 3, 0.0},
   }; 
   joint_offset = map_joint_offset[id];
+
+  std::map<uint8_t, float> map_sign = {
+    { 0, 1.0},
+    { 1, 1.0},
+    { 2, 1.0},
+    { 3, 1.0},
+  }; 
+  sign = map_sign[id];
 
   // prepare position msg
   message_position.identifier = MSG_IDS_REL::STATE_POSITION + ((id+1) *100);
@@ -451,7 +459,7 @@ void PadmanESP32::loop(){
 
 float PadmanESP32::joint_position(){
   float motor_position = (motor.shaftAngle() - lim_lower) - (lim_upper - lim_lower)/2. ; // compute off-zero position in motor space (temporarily assuming zero is in the middle of joint limits in motor space)
-  float joint_position = motor_position / gear_ratio - joint_offset; // transfer to joint space, first using gear ratio, then offsetting joint_offset which is specified in joint-space
+  float joint_position = sign * (motor_position / gear_ratio - joint_offset); // transfer to joint space, first using gear ratio, then offsetting joint_offset which is specified in joint-space
   return joint_position;
 }
 

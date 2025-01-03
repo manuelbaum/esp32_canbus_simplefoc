@@ -56,6 +56,7 @@ class PadmanESP32{
     float joint_target = 0;
     float tau = 0;
     float kp = 1.0;
+    float sign = 1.0;
     STATES state;
 
     int n_msg_received=0;
