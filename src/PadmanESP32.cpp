@@ -243,6 +243,9 @@ void PadmanESP32::canbus_callback() {
         case MSG_IDS_REL::CMD: // is it a command?
           printf("COMMAND: %u",(uint8_t)*message.data);
           switch((uint8_t)*message.data){
+            case CMD_IDS::REQ_STATUS:
+              send_canbus_state();
+              break;
             case CMD_IDS::INIT_FOC: // Received Command to init FOC
               printf("Initializing FOC.");
               init_simplefoc();
