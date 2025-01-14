@@ -4,6 +4,9 @@
 #include <SimpleFOC.h>
 #include <map>
 #include "driver/twai.h"
+#include <mutex>
+
+
 
 enum MSG_IDS_REL{
     CMD = 0,
@@ -53,6 +56,7 @@ class PadmanESP32{
     float lim_upper;
     float gear_ratio;
     float joint_offset;
+    std::mutex mtx_joint_target;
     float joint_target = 0;
     float tau = 0;
     float kp = 1.0;
@@ -95,5 +99,11 @@ class PadmanESP32{
         void print_can_statistic();
         void check_twai_status_and_recover();
 
+        void set_desired_position(float target){const std::lock_guard<std::mutex> lock(mtx_joint_target);
+                                joint_target=target;}
+        float get_desired_position(){
+            const std::lock_guard<std::mutex> lock(mtx_joint_target);
+            return joint_target;
+        }
 };
 

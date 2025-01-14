@@ -30,7 +30,7 @@ void loop() {
   unsigned long currentMillis = millis();
   if (currentMillis - previousMillis >= PRINT_RATE_MS) {
     //printf(" --- loop ---\n");
-    padman->print_can_statistic();
+    //padman->print_can_statistic();
 
     padman->check_twai_status_and_recover();
 

@@ -5,6 +5,8 @@
 #include <WiFi.h>
 #include "driver/twai.h"
 
+
+
 // Helper function to clamp torque, coulndt import std::clamp for some reason
 float clamp(float n, float lower, float upper) {
   return std::max(lower, std::min(n, upper));
@@ -238,7 +240,7 @@ void PadmanESP32::canbus_callback() {
     // Serial.println();
 
     if((message.identifier/100)-1 == id){ // is this for this joint?
-      Serial.println("FOR MEEEE for me!!");
+      
       switch(message.identifier%100){
         case MSG_IDS_REL::CMD: // is it a command?
           printf("COMMAND: %u",(uint8_t)*message.data);
@@ -263,14 +265,21 @@ void PadmanESP32::canbus_callback() {
             case CMD_CTRL_POSITION:
               printf("Received CMD_CTRL_POSITION!\n");
               motor.controller = MotionControlType::torque;
-              joint_target = 0;
+              set_desired_position(0);
+              state=CTRL_POSITION;
+            case CMD_CTRL_TORQUE:
+              printf("Received CMD_CTRL_TORQUE!\n");
+              motor.controller = MotionControlType::torque;
+              set_desired_position(0);
               state=CTRL_POSITION;
           }
         
         case MSG_IDS_REL::TARGET_POSITION:
           
           //joint_target = (float_t)*message.data;
-          memcpy(&joint_target, message.data, sizeof(joint_target));
+          float new_target;
+          memcpy(&new_target, message.data, sizeof(new_target));
+          set_desired_position(new_target);
           // printf("Received a new joint target %f", joint_target);
 
       } 
@@ -306,6 +315,11 @@ void PadmanESP32::send_canbus_state(){
 
 void PadmanESP32::send_canbus_position() {
 float position=joint_position();
+if(position != position){
+    printf("NAN!!!!");
+    printf("Joint %i Sending Position: %f %f %f\n", id, position, motor.shaftAngle(), sensor.getAngle());
+}
+
 memcpy(message_position.data, &position, sizeof(position));
   // Queue message for transmission
   if (twai_transmit(&message_position, pdMS_TO_TICKS(10)) == ESP_OK) {
@@ -435,7 +449,7 @@ void PadmanESP32::loop(){
         break;
   case CTRL_POSITION :
         motor.controller = MotionControlType::torque;
-        tau = kp*(joint_target - joint_position());
+        tau = kp*(get_desired_position() - joint_position());
         motor.target = tau;
         //motor.target = clamp(tau,-0.5, 0.5);
         break;
