@@ -19,6 +19,7 @@ PadmanESP32::PadmanESP32():sensor(AS5048_SPI, 10),
                           message_position()
                           {
 
+  kT = 60./(2.0*3.141*motor.KV_rating);
 
   map_mac_to_id = {
     { std::array<uint8_t, 6>({0x34, 0xb7, 0xda, 0x5a, 0x48, 0xd0}), 0 },
@@ -74,9 +75,9 @@ PadmanESP32::PadmanESP32():sensor(AS5048_SPI, 10),
 
   // prepare position msg
   message_position.identifier = MSG_IDS_REL::STATE_POSITION + ((id+1) *100);
-  message_position.data_length_code = sizeof(position);
+  message_position.data_length_code = sizeof(x);
   message_position.rtr = false;
-  memcpy(message_position.data, &position, sizeof(position));
+  memcpy(message_position.data, &x, sizeof(x));
 
 }
 
@@ -265,13 +266,13 @@ void PadmanESP32::canbus_callback() {
             case CMD_CTRL_POSITION:
               printf("Received CMD_CTRL_POSITION!\n");
               motor.controller = MotionControlType::torque;
-              set_desired_position(0);
+              set_x_d(0);
               state=CTRL_POSITION;
             case CMD_CTRL_TORQUE:
               printf("Received CMD_CTRL_TORQUE!\n");
               motor.controller = MotionControlType::torque;
-              set_desired_position(0);
-              state=CTRL_POSITION;
+              set_tau_d(0);
+              state=CTRL_TORQUE;
           }
         
         case MSG_IDS_REL::TARGET_POSITION:
@@ -279,7 +280,7 @@ void PadmanESP32::canbus_callback() {
           //joint_target = (float_t)*message.data;
           float new_target;
           memcpy(&new_target, message.data, sizeof(new_target));
-          set_desired_position(new_target);
+          set_x_d(new_target);
           // printf("Received a new joint target %f", joint_target);
 
       } 
@@ -449,10 +450,20 @@ void PadmanESP32::loop(){
         break;
   case CTRL_POSITION :
         motor.controller = MotionControlType::torque;
-        tau = kp*(get_desired_position() - joint_position());
+        tau = kp*(get_x_d() - joint_position());
         motor.target = tau;
         //motor.target = clamp(tau,-0.5, 0.5);
         break;
+  case CTRL_TORQUE :
+      motor.controller = MotionControlType::torque;
+
+      float tau_d_motor = tau_d / gear_ratio;
+      tau = tau_d_motor / kT;
+
+      //tau = kp*(get_x_d() - joint_position());
+      motor.target = tau;
+      //motor.target = clamp(tau,-0.5, 0.5);
+      break;
 
     // case oscillate_up :
     //     motor.controller = MotionControlType::torque;
@@ -483,9 +494,9 @@ float PadmanESP32::joint_position(){
 void PadmanESP32::update_sensor(){
 
   sensor.update();
-  position = sensor.getAngle();
+  x = sensor.getAngle();
 }
 
 float PadmanESP32::get_position(){
-  return position;
+  return x;
 }

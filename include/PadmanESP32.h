@@ -51,13 +51,17 @@ class PadmanESP32{
     uint8_t mac8[6];
     uint8_t id;
 
-    float position;
+    float kT; // in SI units, https://en.wikipedia.org/wiki/Motor_constants
+
+    float x;
     float lim_lower;
     float lim_upper;
     float gear_ratio;
     float joint_offset;
-    std::mutex mtx_joint_target;
-    float joint_target = 0;
+    std::mutex mtx_x_d;
+    std::mutex mtx_tau_d;
+    float x_d = 0; // desired position (set from canbus)
+    float tau_d = 0; // desired torque (set from canbus)
     float tau = 0;
     float kp = 1.0;
     float sign = 1.0;
@@ -99,11 +103,18 @@ class PadmanESP32{
         void print_can_statistic();
         void check_twai_status_and_recover();
 
-        void set_desired_position(float target){const std::lock_guard<std::mutex> lock(mtx_joint_target);
-                                joint_target=target;}
-        float get_desired_position(){
-            const std::lock_guard<std::mutex> lock(mtx_joint_target);
-            return joint_target;
+        void set_x_d(float target){const std::lock_guard<std::mutex> lock(mtx_x_d);
+                                x_d=target;}
+        float get_x_d(){
+            const std::lock_guard<std::mutex> lock(mtx_x_d);
+            return x_d;
+        }
+
+        void set_tau_d(float target){const std::lock_guard<std::mutex> lock(mtx_tau_d);
+                        tau_d=target;}
+        float get_tau_d(){
+            const std::lock_guard<std::mutex> lock(mtx_tau_d);
+            return tau_d;
         }
 };
 
