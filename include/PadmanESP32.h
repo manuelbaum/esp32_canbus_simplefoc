@@ -23,7 +23,8 @@ enum CMD_IDS{
     FIND_JOINTLIMITS=3,
     CMD_CTRL_TORQUE=4,
     CMD_CTRL_POSITION=5,
-    REBOOT=6
+    REBOOT=6,
+    SET_KD=7
 };
 
 enum STATES{
@@ -63,9 +64,13 @@ class PadmanESP32{
     float x_d = 0; // desired position (set from canbus)
     float tau_d = 0; // desired torque (set from canbus)
     float tau = 0;
-    float kp = 1.0;
+    float kp = 0.5;
+    float kd = 0.01;
+    float damping_deadband = 0.05;
     float sign = 1.0;
     STATES state;
+
+
 
     int n_msg_received=0;
     int n_msg_req_position=0;
@@ -81,6 +86,12 @@ class PadmanESP32{
     // BLDCDriver3PWM driver = BLDCDriver3PWM(pwmA, pwmB, pwmC, Enable(optional));
 
       twai_message_t message_position;
+      twai_message_t message_velocity;
+
+      unsigned long t_prev_fps_canbus = millis();
+      unsigned long t_prev_fps_control = millis();
+      unsigned int count_fps_canbus = 0;
+      unsigned int count_fps_control = 0;
 
     public:
         PadmanESP32();
@@ -88,12 +99,15 @@ class PadmanESP32{
         void init_simplefoc();
         void init_canbus();
         void send_canbus_position();
+        void send_canbus_velocity();
         void send_canbus_state();
         void readMacAddress(uint8_t baseMac[6]);
         float joint_position();
+        float joint_velocity();
 
         void update_sensor();
         float get_position();
+        //float get_velocity();
         float get_id(){return id;};
         STATES get_state(){return state;};
         void canbus_callback();
@@ -101,6 +115,7 @@ class PadmanESP32{
         void loop();
         void switch_ctrl_position();
         void print_can_statistic();
+        void print_id_can_and_mac();
         void check_twai_status_and_recover();
 
         void set_x_d(float target){const std::lock_guard<std::mutex> lock(mtx_x_d);
