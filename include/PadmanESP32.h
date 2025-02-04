@@ -65,7 +65,7 @@ class PadmanESP32{
     float tau_d = 0; // desired torque (set from canbus)
     float tau = 0;
     float kp = 0.5;
-    float kd = 0.01;
+    float kd = 0.0025;
     float damping_deadband = 0.05;
     float sign = 1.0;
     STATES state;
@@ -90,6 +90,7 @@ class PadmanESP32{
 
       unsigned long t_prev_fps_canbus = millis();
       unsigned long t_prev_fps_control = millis();
+      unsigned long t_prev_send_canbus_state = millis();
       unsigned int count_fps_canbus = 0;
       unsigned int count_fps_control = 0;
 

@@ -21,7 +21,7 @@ PadmanESP32::PadmanESP32() : sensor(AS5048_SPI, 10),
 
   kT = 60. / (2.0 * 3.141 * motor.KV_rating);
 
-  kd = 0.00;
+  
 
   map_mac_to_id = {
       {std::array<uint8_t, 6>({0x34, 0xb7, 0xda, 0x5a, 0x48, 0xd0}), 0},
@@ -35,12 +35,7 @@ PadmanESP32::PadmanESP32() : sensor(AS5048_SPI, 10),
      // padman v01
 
   delay(1000);
-  init_canbus();
 
-  // delay(100);
-  // init_simplefoc();
-
-  delay(1000);
 
   // Figure out our ID from the mac address
   readMacAddress(mac8);
@@ -53,6 +48,8 @@ PadmanESP32::PadmanESP32() : sensor(AS5048_SPI, 10),
   std::copy(std::begin(mac8), std::end(mac8), mac_array.begin());
   id = map_mac_to_id[mac_array];
 
+  delay(10*id);
+
   //   printf("once more MAC: %02x:%02x:%02x:%02x:%02x:%02x\n",
   //          mac8[0], mac8[1], mac8[2],
   //          mac8[3], mac8[4], mac8[5]);
@@ -63,6 +60,9 @@ PadmanESP32::PadmanESP32() : sensor(AS5048_SPI, 10),
       {1, 4.0},
       {2, 1.0},
       {3, 4.0},
+      {4, 4.0},
+      {5, 1.0},
+      {6, 1.0},
   };
   gear_ratio = map_gear_ratio[id];
 
@@ -70,7 +70,10 @@ PadmanESP32::PadmanESP32() : sensor(AS5048_SPI, 10),
       {0, -3.141 / 6.0 + 3.141},
       {1, 0.0},
       {2, 0.0},
-      {3, 0.0},
+      {3, +3.141 / 6.0 - 3.141},// mein guess gerade//0.0},
+      {4, 0.0},
+      {5, 0.0},
+      {6, 0.0},
   };
   joint_offset = map_joint_offset[id];
 
@@ -79,6 +82,9 @@ PadmanESP32::PadmanESP32() : sensor(AS5048_SPI, 10),
       {1, 1.0},
       {2, 1.0},
       {3, 1.0},
+      {4, 1.0},
+      {5, 1.0},
+      {6, 1.0},
   };
   sign = map_sign[id];
 
@@ -93,6 +99,15 @@ PadmanESP32::PadmanESP32() : sensor(AS5048_SPI, 10),
   message_velocity.data_length_code = sizeof(x);
   message_velocity.rtr = false;
   memcpy(message_velocity.data, &x, sizeof(x));
+
+
+  init_canbus();
+
+  // delay(100);
+  // init_simplefoc();
+
+  delay(1000);
+
 }
 
 void PadmanESP32::readMacAddress(uint8_t baseMac[6])
@@ -173,7 +188,9 @@ void PadmanESP32::init_canbus()
   recover_from_bus_off();
   // Initialize configuration structures using macro initializers
   twai_general_config_t g_config = TWAI_GENERAL_CONFIG_DEFAULT((gpio_num_t)pin_canbus_tx, (gpio_num_t)pin_canbus_rx, TWAI_MODE_NORMAL);
-  // g_config.bus_off_recovery = true;
+  g_config.tx_queue_len = 20;
+  g_config.rx_queue_len = 20;
+
   twai_timing_config_t t_config = TWAI_TIMING_CONFIG_500KBITS(); // Look in the api-reference for other speed sets.
   twai_filter_config_t f_config = TWAI_FILTER_CONFIG_ACCEPT_ALL();
 
@@ -232,7 +249,7 @@ void PadmanESP32::init_canbus()
 
 void PadmanESP32::canbus_polling()
 {
-  unsigned long t_prev = millis();
+  
   int CANBUS_STATE_RATE_MS = 1000;
   while (1)
   {
@@ -241,18 +258,19 @@ void PadmanESP32::canbus_polling()
     delayMicroseconds(500); // Small delay to avoid hogging the CPU
 
     unsigned long t_now = millis();
-    if (t_now - t_prev >= CANBUS_STATE_RATE_MS)
+    if (t_now - t_prev_send_canbus_state >= CANBUS_STATE_RATE_MS)
     {
       send_canbus_state();
-      t_prev = t_now;
     }
 
     count_fps_canbus++;
     if(t_now > t_prev_fps_canbus + 1000){
-      printf("CANBUS CORE: %i FPS: %i\n", xPortGetCoreID(), count_fps_canbus);
+      printf("CANBUS CPU_CORE: %i FPS: %i\n", xPortGetCoreID(), count_fps_canbus);
       //print_id_can_and_mac();
       t_prev_fps_canbus = t_now;
       count_fps_canbus = 0;
+
+      check_twai_status_and_recover();
     }
 
   }
@@ -263,7 +281,7 @@ void PadmanESP32::canbus_callback()
 {
 
   twai_message_t message;
-  if (twai_receive(&message, pdMS_TO_TICKS(1)) == ESP_OK)
+  while (twai_receive(&message, pdMS_TO_TICKS(1)) == ESP_OK)
   {
     n_msg_received++;
     // Print the received message ID and data
@@ -286,37 +304,38 @@ void PadmanESP32::canbus_callback()
         //printf("COMMAND: %u", (uint8_t)*message.data);
         switch ((uint8_t)*message.data)
         {
-        case CMD_IDS::REQ_STATUS:
-          send_canbus_state();
-          break;
-        case CMD_IDS::INIT_FOC: // Received Command to init FOC
-          printf("Initializing FOC.");
-          init_simplefoc();
-          break;
-        case FIND_JOINTLIMITS: // Received Command to explore joint limits
-          printf("Find Joint Limits.");
-          motor.controller = MotionControlType::velocity;
-          state = FIND_LIMIT_LOWER;
-          break;
-        case REBOOT:
-          printf("Received REBOOT command. Rebooting!\n");
-          twai_stop();
-          twai_driver_uninstall();
-          ESP.restart();
-          break;
-        case CMD_CTRL_POSITION:
-          printf("Received CMD_CTRL_POSITION!\n");
-          motor.controller = MotionControlType::torque;
-          set_x_d(0);
-          state = CTRL_POSITION;
-          break;
-        case CMD_CTRL_TORQUE:
-          printf("Received CMD_CTRL_TORQUE!\n");
-          motor.controller = MotionControlType::torque;
-          set_tau_d(0);
-          state = CTRL_TORQUE;
-          break;
+          case CMD_IDS::REQ_STATUS:
+            send_canbus_state();
+            break;
+          case CMD_IDS::INIT_FOC: // Received Command to init FOC
+            printf("Initializing FOC.");
+            init_simplefoc();
+            break;
+          case FIND_JOINTLIMITS: // Received Command to explore joint limits
+            printf("Find Joint Limits.");
+            motor.controller = MotionControlType::velocity;
+            state = FIND_LIMIT_LOWER;
+            break;
+          case REBOOT:
+            printf("Received REBOOT command. Rebooting!\n");
+            twai_stop();
+            twai_driver_uninstall();
+            ESP.restart();
+            break;
+          case CMD_CTRL_POSITION:
+            printf("Received CMD_CTRL_POSITION!\n");
+            motor.controller = MotionControlType::torque;
+            //set_x_d(0);
+            state = CTRL_POSITION;
+            break;
+          case CMD_CTRL_TORQUE:
+            printf("Received CMD_CTRL_TORQUE!\n");
+            motor.controller = MotionControlType::torque;
+            set_tau_d(0);
+            state = CTRL_TORQUE;
+            break;
         }
+        break;
 
       case MSG_IDS_REL::TARGET_POSITION:
 
@@ -324,8 +343,9 @@ void PadmanESP32::canbus_callback()
         float new_target;
         memcpy(&new_target, message.data, sizeof(new_target));
         set_x_d(new_target);
-        // printf("Received a new joint target %f", joint_target);
+        printf("Received a new joint target %f", new_target);
         break;
+
       case MSG_IDS_REL::TARGET_TORQUE:
 
         // joint_target = (float_t)*message.data;
@@ -350,10 +370,10 @@ void PadmanESP32::canbus_callback()
       }
     }
   }
-  else
-  {
-    // Serial.println("Failed to receive message");
-  }
+  // else
+  // {
+  //   // Serial.println("Failed to receive message");
+  // }
 }
 
 void PadmanESP32::send_canbus_state()
@@ -363,16 +383,40 @@ void PadmanESP32::send_canbus_state()
   message_state.data_length_code = sizeof(state);
   message_state.rtr = false;
   memcpy(message_state.data, &state, sizeof(state));
+  
 
   // Queue message for transmission
-  if (twai_transmit(&message_state, pdMS_TO_TICKS(1000)) == ESP_OK)
+  esp_err_t can_err = twai_transmit(&message_state, pdMS_TO_TICKS(10));
+  if (can_err == ESP_OK)
   {
     // printf("Message queued for transmission -- State\n");
   }
   else
   {
+    switch(can_err){
+      case ESP_ERR_INVALID_ARG: 
+        printf("ESP_ERR_INVALID_ARG: Arguments are invalid");
+        break;
+      case ESP_ERR_TIMEOUT: 
+        printf("ESP_ERR_TIMEOUT: Timed out waiting for space on TX queue");
+        break;
+      case ESP_FAIL: 
+        printf("ESP_FAIL: TX queue is disabled and another message is currently transmitting");
+        break;
+      case ESP_ERR_INVALID_STATE: 
+        printf("ESP_ERR_INVALID_STATE: TWAI driver is not in running state, or is not installed");
+        break;
+      case ESP_ERR_NOT_SUPPORTED: 
+        printf("ESP_ERR_NOT_SUPPORTED: Listen Only Mode does not support transmissions");
+        break;
+      default:
+        printf("ESP_ERR: Some weird error occured that I cannot fix.. default case..");
+        break;
+    }
     printf("Failed to queue message for transmission -- State\n");
   }
+
+  t_prev_send_canbus_state = millis();
 }
 
 void PadmanESP32::send_canbus_position()

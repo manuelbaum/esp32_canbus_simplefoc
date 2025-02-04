@@ -20,12 +20,6 @@ void setup() {
 }
 
 void loop() {
-  if(padman->get_state()==STATES::UNINITIALIZED){return;}
-  
-
-  //
-  padman->loop();
-
   // Send message
   unsigned long currentMillis = millis();
   if (currentMillis - previousMillis >= PRINT_RATE_MS) {
@@ -34,19 +28,21 @@ void loop() {
     
     padman->check_twai_status_and_recover();
 
-
-
     previousMillis = currentMillis;
     //send_message();
   
       
     // padman->send_canbus_jointstate();
     //printf("%f %u",padman->get_position(), padman->get_id());
+  }
+
+  if(padman->get_state()==STATES::UNINITIALIZED){return;}
+  
+
+  //
+  padman->loop();
 
 
-      
-
-    }
 
   //padman->send_canbus_position();
     
