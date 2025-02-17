@@ -135,7 +135,8 @@ void PadmanESP32::init_simplefoc()
   motor.linkSensor(&sensor);
 
   // power supply voltage
-  driver.voltage_power_supply = 14.8;
+  //driver.voltage_power_supply = 14.8;
+  driver.voltage_power_supply = 16.0;
   driver.init(); // <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<< THIS ONE SEEMS TO FUCK UP CAN BUS... WHY
   motor.linkDriver(&driver);
 
@@ -191,7 +192,7 @@ void PadmanESP32::init_canbus()
   g_config.tx_queue_len = 20;
   g_config.rx_queue_len = 20;
 
-  twai_timing_config_t t_config = TWAI_TIMING_CONFIG_500KBITS(); // Look in the api-reference for other speed sets.
+  twai_timing_config_t t_config = TWAI_TIMING_CONFIG_1MBITS(); // Look in the api-reference for other speed sets. // TWAI_TIMING_CONFIG_500KBITS()
   twai_filter_config_t f_config = TWAI_FILTER_CONFIG_ACCEPT_ALL();
 
   // Install TWAI driver
@@ -255,7 +256,7 @@ void PadmanESP32::canbus_polling()
   {
     canbus_callback(); // Check for received messages in a loop
     // send_canbus_position();
-    delayMicroseconds(500); // Small delay to avoid hogging the CPU
+    delayMicroseconds(100); // Small delay to avoid hogging the CPU
 
     unsigned long t_now = millis();
     if (t_now - t_prev_send_canbus_state >= CANBUS_STATE_RATE_MS)
@@ -281,7 +282,7 @@ void PadmanESP32::canbus_callback()
 {
 
   twai_message_t message;
-  while (twai_receive(&message, pdMS_TO_TICKS(1)) == ESP_OK)
+  while (twai_receive(&message, pdMS_TO_TICKS(10)) == ESP_OK)
   {
     n_msg_received++;
     // Print the received message ID and data
